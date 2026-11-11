@@ -1,6 +1,6 @@
 // Guarda la Pokédex en el celu para que ande sin internet.
 // Si hay internet, busca la versión nueva en segundo plano.
-const CACHE = "mi-pokedex-v1";
+const CACHE = "mi-pokedex-v2";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

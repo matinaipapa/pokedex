@@ -57,6 +57,7 @@
   dialog::backdrop{background:rgba(0,0,0,.45)}
   dialog h2{margin:0 0 6px;font-size:18px}
   dialog p{margin:6px 0 12px;color:#555;font-size:14px;line-height:1.4}
+  dialog code{background:#f1efe9;padding:2px 6px;border-radius:6px;font-size:12px;word-break:break-all}
   dialog textarea{width:100%;height:90px;font-size:12px;font-family:ui-monospace,monospace;border:1px solid var(--line);border-radius:10px;padding:8px}
   .btn{display:block;width:100%;border:0;border-radius:12px;padding:12px;font-size:15px;font-weight:700;margin-top:8px;cursor:pointer;background:#eee;color:var(--ink)}
   .btn.main{background:var(--red);color:#fff}
@@ -108,6 +109,11 @@
 <div class="nag" id="backupNag" hidden>💾 Marcaste varios nuevos. ¿Guardás tu progreso por las dudas?
   <span><button id="nagYes">Guardar</button><button id="nagNo">Después</button></span></div>
 <input type="file" id="fileInput" accept=".json,application/json,text/plain,*/*" hidden>
+<dialog id="saved">
+  <h2>✅ ¡Progreso guardado!</h2>
+  <p id="savedText"></p>
+  <button class="btn main" id="savedOk">Listo</button>
+</dialog>
 <dialog id="merge">
   <h2>Cargar progreso</h2>
   <p id="mergeText"></p>
@@ -120,7 +126,7 @@
 <main>
   <div class="warn" id="noStorage" hidden>⚠️ Este navegador no está guardando tu progreso. Abrí el archivo con <b>Chrome</b> (o Safari/Edge/Firefox en la compu). Mientras tanto, usá “Guardar progreso” antes de cerrar.</div>
   <section class="sync">
-    <div class="sync-txt"><b>Pasar tu progreso a otro dispositivo</b><span id="syncInfo"></span></div>
+    <div class="sync-txt"><b>Pasar tu progreso a otro dispositivo</b><span>✓ Lo que marcás se guarda solo en este dispositivo. “Guardar progreso” crea un archivo para llevarlo a otro.</span><span id="syncInfo"></span></div>
     <div class="sync-btns">
       <button id="saveBtn">💾 Guardar progreso</button>
       <button id="loadBtn">📂 Cargar progreso</button>
@@ -290,20 +296,32 @@ function showSyncInfo(){
   let last=null; try{ last=localStorage.getItem(KEY+"-last"); }catch(e){}
   $("syncInfo").textContent = last ? `Último guardado/carga: ${new Date(+last).toLocaleString("es-AR",{dateStyle:"short",timeStyle:"short"})}` + (dirty?` · ${dirty} cambios nuevos`:"") : "Guardá tu progreso y cargalo en el otro celu o la compu";
 }
+function savedDialog(name, where){
+  $("savedText").innerHTML = `Guardaste <b>${owned.size}</b> Pokémon en el archivo:<br><code>${name}</code><br><br>${where}<br><br>Para pasarlo a otro dispositivo, mandate ese archivo (por WhatsApp, mail, Drive…) y ahí tocá <b>📂 Cargar progreso</b>.`;
+  $("saved").showModal();
+}
 function markBackedUp(){ dirty = 0; try { localStorage.setItem(KEY+"-last", String(Date.now())); } catch(e) {} save(); $("backupNag").hidden = true; showSyncInfo(); }
 function downloadBackup(){
   const data = JSON.stringify({app:"mi-pokedex", v:1, fecha:new Date().toISOString(), tengo:[...owned].sort((a,b)=>a-b)});
   const name = `mi-pokedex-progreso-${new Date().toISOString().slice(0,10)}.json`;
   const blob = new Blob([data], {type:"application/json"});
   const file = new File([blob], name, {type:"application/json"});
-  // En el celu abre "Compartir" (guardar en Archivos, Drive, WhatsApp…); si no, descarga
-  if (navigator.canShare && navigator.canShare({files:[file]})) {
-    navigator.share({files:[file], title:"Mi progreso de la Pokédex"}).then(()=>{ markBackedUp(); toastSimple("¡Progreso guardado!"); }).catch(()=>{});
-  } else {
+  const isPhone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  const download = () => {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
-    markBackedUp(); toastSimple("¡Progreso guardado en Descargas!");
-  }
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    markBackedUp();
+    savedDialog(name, isPhone ? "Quedó en las <b>Descargas</b> del celu." : "Quedó en tu carpeta de <b>Descargas</b>.");
+  };
+  // En el celu abre "Compartir" (Archivos, Drive, WhatsApp…). En la compu descarga directo.
+  if (isPhone && navigator.canShare && navigator.canShare({files:[file]})) {
+    navigator.share({files:[file], title:"Mi progreso de la Pokédex"})
+      .then(()=>{ markBackedUp(); savedDialog(name, "Lo mandaste a donde elegiste en <b>Compartir</b>."); })
+      .catch(err => {
+        if (err && err.name === "AbortError") { toastSimple("No se guardó (cerraste Compartir)"); }
+        else download();
+      });
+  } else download();
 }
 $("saveBtn").onclick = downloadBackup;
 $("nagYes").onclick = downloadBackup;
@@ -332,6 +350,7 @@ $("fileInput").onchange = async e => {
 };
 $("mJoin").onclick = () => { applyLoad(new Set([...owned, ...pending.ids])); $("merge").close(); };
 $("mReplace").onclick = () => { applyLoad(new Set(pending.ids)); $("merge").close(); };
+$("savedOk").onclick = () => $("saved").close();
 $("mCancel").onclick = () => $("merge").close();
 function applyLoad(set){
   const before = owned.size; owned = set;
